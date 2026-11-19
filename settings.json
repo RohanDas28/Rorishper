@@ -1,0 +1,12 @@
+{
+  "hotkey": [
+    "alt",
+    "shift"
+  ],
+  "model": "large-v3-turbo",
+  "paste": true,
+  "idle_unload": true,
+  "show_overlay": true,
+  "animation_style": "Fluid Ribbon (Neon Wave)",
+  "language": "auto"
+}

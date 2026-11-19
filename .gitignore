@@ -1,0 +1,55 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyd
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Editor directories and files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Operating system artifacts
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Model caches and temporary artifacts
+models/
+huggingface/
+
+# Temporary test / preview images
+test_*.png
+preview_*.png
+scratch_*.png
+final_*.png
+check_*.png
