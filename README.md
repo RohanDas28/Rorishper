@@ -29,32 +29,6 @@
 
 ---
 
-## Branding & Visual Assets
-
-| Asset | File | Dimensions | Purpose |
-| :--- | :--- | :--- | :--- |
-| **Squircle Brand Tile** | `icons/logo.png` | 1254 x 1254 | Primary brand art, README banner, and splash visual |
-| **Transparent Brand Mark** | `icons/transparent.png` | 1312 x 1199 | Alpha-transparent ribbon R and wordmark for composites |
-| **Masked App Squircle** | `icons/logo_clean.png` | 1254 x 1254 | Anti-aliased transparent-corner squircle for desktop displays |
-| **App Header Mark** | `icons/app_mark.png` | 128 x 128 | High-DPI brand mark displayed in the app navigation header |
-| **Multi-Res Windows Icon** | `icons/app.ico` | 16 to 256 px | Multi-resolution icon for Windows taskbar, title bar, and shortcuts |
-
----
-
-## Theme Palette: Midnight Black
-
-| Surface | Color | Hex Code | Description |
-| :--- | :--- | :--- | :--- |
-| **Main Background** | Midnight Black | `#0A0C12` | App root window and system tray tile backing |
-| **Component Background** | Deep Navy | `#151727` | Hero card, preferences container, transcript well, pill body |
-| **Waveform Shadows** | Dark Purple | `#332B5D` | Wave depth shading, vertical hairline divider, borders |
-| **Border & Glow** | Electric Purple | `#5842D2` | Outer neon glow, brand glyph, active UI switches |
-| **Waveform Highlights**| Neon Blue | `#666BDF` | Primary wave crests, capsule bar gradients, left edge glow |
-| **Waveform Accents** | Soft Lavender | `#AB7EE1` | Harmonic wave crests, top specular rim, shortcut labels |
-| **Text & Icons** | Cool White | `#EAEAF0` | High-contrast Segoe UI typography and icon glyphs |
-
----
-
 ## Getting Started
 
 ### Prerequisites
