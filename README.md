@@ -16,8 +16,9 @@
 - **Midnight Black Design System**: Built with deep navy panels, electric purple glows, neon blue highlights, and cool white typography.
 - **Customizable Animation Styles**: Choose your preferred visualizer directly in Preferences:
   - **Waveform (Audio-style)**: Multi-layered organic sine waves with dynamic microphone reactivity, soft lavender harmonic crests, and depth shading.
-  - **Glowing Bars (Capsule)**: 9 rounded equalizer capsule bars with a smooth gradient from Neon Blue to Soft LaveOkayHow does it look?nder and audio bounce.
+  - **Glowing Bars (Capsule)**: 9 rounded equalizer capsule bars with a smooth gradient from Neon Blue to Soft Lavender and audio bounce.
   - **Fluid Ribbon (Neon Wave)**: A continuous illuminated neon ribbon undulating smoothly between oscillating boundaries.
+- **Background Auto-Update System**: Automatically checks GitHub for new commits/updates on startup. Installs updates in the background without disturbing your settings or downloaded models, and offers a 1-click "Restart Now" button. You can also manually check for updates in Preferences at any time.
 - **Floating Glass Indicator Pill**: A high-DPI, translucent indicator pill that floats at the bottom-center of your screen while speaking or transcribing. It features `WS_EX_NOACTIVATE` so it never steals focus from your active document or code editor.
 - **Instant "Preview Pill" Button**: Test and preview the floating indicator and your selected animation style anytime with a single click in Preferences.
 - **Scrollable Interface**: Smooth built-in vertical scrollbar ensures seamless access to all controls on screens and resolutions of any size.
@@ -107,6 +108,7 @@ Settings are saved automatically to `settings.json` in the application directory
 | `paste` | boolean | `true` | Automatically paste text via `Ctrl+V` into active app upon release |
 | `idle_unload` | boolean | `true` | Release GPU VRAM after 5 minutes of idle inactivity |
 | `show_overlay` | boolean | `true` | Show the floating bottom glass indicator pill while speaking |
+| `auto_update` | boolean | `true` | Automatically check GitHub for updates on launch |
 | `language` | string | `"auto"` | Transcription language mode (`auto` detects English & Hindi) |
 
 ---

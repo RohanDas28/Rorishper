@@ -24,6 +24,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageTk
 import pystray
 import sounddevice as sd
 from pynput import keyboard
+import updater
 
 APP_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = APP_DIR / "settings.json"
@@ -76,6 +77,7 @@ DEFAULTS = {
     "idle_unload": True,
     "show_overlay": True,
     "animation_style": "Waveform (Audio-style)",
+    "auto_update": True,
 }
 
 CUDA_DLL_HANDLES = []
@@ -645,6 +647,14 @@ class RorishperFlow:
         self.paste_var = ctk.BooleanVar(value=self.settings.get("paste", True))
         self.idle_unload_var = ctk.BooleanVar(value=self.settings.get("idle_unload", True))
         self.overlay_var = ctk.BooleanVar(value=self.settings.get("show_overlay", True))
+        self.auto_update_var = ctk.BooleanVar(value=self.settings.get("auto_update", True))
+        self.update_info = None
+        self.update_in_progress = False
+        local_info = updater.get_local_version_info()
+        commit_str = local_info.get("commit", "")[:7]
+        self.update_status_var = ctk.StringVar(
+            value=f"v{local_info.get('version', '1.0.1')} ({commit_str})" if commit_str else f"v{local_info.get('version', '1.0.1')}"
+        )
 
         # Floating overlay state
         self.overlay_text = "Listening — release to finish"
@@ -667,6 +677,8 @@ class RorishperFlow:
         self.root.after(25, self.process_events)
         self.root.after(10_000, self.check_idle)
         self.request_model_load()
+        if self.auto_update_var.get():
+            self.root.after(3500, self.check_updates_background)
 
     def _poll_hotkeys_loop(self):
         """Dedicated background poller using Windows GetAsyncKeyState.
@@ -826,6 +838,15 @@ class RorishperFlow:
         # --------------------------------------------------------------------
         # 2. Hero Card (Speech Trigger & Dynamic Visualizer)
         # --------------------------------------------------------------------
+        # Update Banner (hidden by default, displayed when update is available or installed)
+        self.update_banner = ctk.CTkFrame(
+            self.main_scroll,
+            fg_color=COLOR_COMP_BG,
+            corner_radius=14,
+            border_width=1.5,
+            border_color=COLOR_BORDER_GLOW,
+        )
+
         self.hero = ctk.CTkFrame(
             self.main_scroll,
             fg_color=COLOR_COMP_BG,
@@ -833,7 +854,7 @@ class RorishperFlow:
             border_width=1.5,
             border_color=COLOR_WAVE_SHADOW,
         )
-        self.hero.grid(row=1, column=0, sticky="ew", padx=22, pady=6)
+        self.hero.grid(row=2, column=0, sticky="ew", padx=22, pady=6)
         self.hero.grid_columnconfigure(0, weight=1)
 
         self.visualizer_frame = ctk.CTkFrame(
@@ -902,7 +923,7 @@ class RorishperFlow:
         # 3. Status Row
         # --------------------------------------------------------------------
         status_row = ctk.CTkFrame(self.main_scroll, fg_color="transparent")
-        status_row.grid(row=2, column=0, sticky="ew", padx=26, pady=(12, 5))
+        status_row.grid(row=3, column=0, sticky="ew", padx=26, pady=(12, 5))
 
         self.status_dot = tk.Canvas(status_row, width=15, height=15, bg=COLOR_MAIN_BG, bd=0, highlightthickness=0)
         self.status_dot.pack(side="left", padx=(0, 8))
@@ -927,7 +948,7 @@ class RorishperFlow:
             font=ctk.CTkFont(size=13),
             wrap="word",
         )
-        self.transcript.grid(row=3, column=0, sticky="ew", padx=22, pady=(6, 4))
+        self.transcript.grid(row=4, column=0, sticky="ew", padx=22, pady=(6, 4))
         self.transcript.insert("1.0", "Your transcription will appear here…")
         self.transcript.configure(state="disabled")
 
@@ -941,7 +962,7 @@ class RorishperFlow:
             border_width=1,
             border_color=COLOR_WAVE_SHADOW,
         )
-        settings.grid(row=4, column=0, sticky="ew", padx=22, pady=(8, 8))
+        settings.grid(row=5, column=0, sticky="ew", padx=22, pady=(8, 8))
         settings.grid_columnconfigure(1, weight=1)
 
         self.label(settings, "PREFERENCES", font=ctk.CTkFont(size=10, weight="bold"), text_color=COLOR_TEXT_MUTED).grid(
@@ -1048,11 +1069,51 @@ class RorishperFlow:
             command=self.preview_indicator_pill,
         ).pack(side="right")
 
+        ctk.CTkSwitch(
+            settings,
+            text="Automatically check for updates on startup",
+            variable=self.auto_update_var,
+            command=self.save_settings,
+            progress_color=COLOR_BORDER_GLOW,
+            button_color=COLOR_TEXT_MAIN,
+            button_hover_color=COLOR_WAVE_ACCENT,
+            text_color=COLOR_TEXT_MAIN,
+            font=ctk.CTkFont(size=12),
+        ).grid(row=7, column=0, columnspan=2, sticky="w", padx=16, pady=(0, 9))
+
+        update_row = ctk.CTkFrame(settings, fg_color="transparent")
+        update_row.grid(row=8, column=0, columnspan=2, sticky="ew", padx=16, pady=(0, 12))
+        update_row.grid_columnconfigure(0, weight=1)
+
+        self.update_status_label = self.label(
+            update_row,
+            textvariable=self.update_status_var,
+            text_color=COLOR_TEXT_MUTED,
+            font=ctk.CTkFont(size=11),
+        )
+        self.update_status_label.pack(side="left")
+
+        self.check_update_btn = ctk.CTkButton(
+            update_row,
+            text="Check for updates",
+            width=125,
+            height=28,
+            corner_radius=8,
+            fg_color=COLOR_BUTTON_BG,
+            hover_color=COLOR_BUTTON_HOVER,
+            border_width=1,
+            border_color=COLOR_WAVE_SHADOW,
+            text_color=COLOR_TEXT_MAIN,
+            font=ctk.CTkFont(size=11),
+            command=self.manual_check_update,
+        )
+        self.check_update_btn.pack(side="right")
+
         # --------------------------------------------------------------------
         # 6. Footer & Credits Row
         # --------------------------------------------------------------------
         footer = ctk.CTkFrame(self.main_scroll, fg_color="transparent")
-        footer.grid(row=5, column=0, sticky="ew", padx=26, pady=(4, 10))
+        footer.grid(row=6, column=0, sticky="ew", padx=26, pady=(4, 10))
 
         gpu_mark = tk.Canvas(footer, width=20, height=20, bg=COLOR_MAIN_BG, bd=0, highlightthickness=0)
         gpu_mark.pack(side="left", padx=(0, 7))
@@ -1079,7 +1140,7 @@ class RorishperFlow:
         self.reload_button.pack(side="right")
 
         credits_row = ctk.CTkFrame(self.main_scroll, fg_color="transparent")
-        credits_row.grid(row=6, column=0, sticky="ew", padx=26, pady=(0, 20))
+        credits_row.grid(row=7, column=0, sticky="ew", padx=26, pady=(0, 20))
 
         ctk.CTkButton(
             credits_row,
@@ -1639,6 +1700,7 @@ class RorishperFlow:
             paste=self.paste_var.get(),
             idle_unload=self.idle_unload_var.get(),
             show_overlay=self.overlay_var.get(),
+            auto_update=self.auto_update_var.get(),
         )
         try:
             CONFIG_PATH.write_text(json.dumps(self.settings, indent=2), encoding="utf-8")
@@ -1749,8 +1811,125 @@ class RorishperFlow:
                         self._hide_overlay()
                 if self.pending_audios and self.model is not None and not self.transcribing:
                     self.start_transcription(self.pending_audios.pop(0))
+            elif kind == "update_available":
+                info, msg = payload, extra[0] if extra else ""
+                self.update_info = info
+                self.install_update_async(info)
+            elif kind == "manual_update_result":
+                has_update, info, msg = payload, extra[0] if extra else None, extra[1] if len(extra) > 1 else ""
+                self.update_in_progress = False
+                self.check_update_btn.configure(state="normal")
+                if has_update:
+                    self.update_info = info
+                    self.update_status_var.set(f"Update: {info.get('remote_commit', '')}")
+                    self.show_update_banner(
+                        f"✨ New version available ({info.get('remote_commit', '')})",
+                        "Update Now",
+                        lambda: self.install_update_async(info),
+                    )
+                else:
+                    self.update_status_var.set(msg)
+            elif kind == "update_applied":
+                success, msg = payload, extra[0] if extra else ""
+                self.update_in_progress = False
+                self.check_update_btn.configure(state="normal")
+                if success:
+                    self.update_status_var.set("Update installed · restart needed")
+                    self.show_update_banner(
+                        "✨ Update installed! Restart to apply.",
+                        "Restart Now",
+                        self.restart_app,
+                    )
+                else:
+                    self.update_status_var.set("Update failed")
+                    self.set_status(f"Update failed: {msg}", "#EF4444")
 
         self.root.after(25, self.process_events)
+
+    def show_update_banner(self, message: str, button_text: str, button_action):
+        """Display an eye-catching update banner above the Hero card."""
+        if not hasattr(self, "update_banner"):
+            return
+        for child in self.update_banner.winfo_children():
+            child.destroy()
+
+        self.update_banner.grid(row=1, column=0, sticky="ew", padx=22, pady=(4, 6))
+
+        inner = ctk.CTkFrame(self.update_banner, fg_color="transparent")
+        inner.pack(fill="x", padx=14, pady=10)
+
+        lbl = self.label(
+            inner,
+            message,
+            text_color=COLOR_TEXT_MAIN,
+            font=ctk.CTkFont(size=12, weight="bold"),
+        )
+        lbl.pack(side="left")
+
+        action_btn = ctk.CTkButton(
+            inner,
+            text=button_text,
+            width=110,
+            height=28,
+            corner_radius=8,
+            fg_color=COLOR_BORDER_GLOW,
+            hover_color=COLOR_WAVE_HIGHLIGHT,
+            text_color=COLOR_TEXT_MAIN,
+            font=ctk.CTkFont(size=11, weight="bold"),
+            command=button_action,
+        )
+        action_btn.pack(side="right")
+
+    def hide_update_banner(self):
+        """Hide the update banner."""
+        if hasattr(self, "update_banner"):
+            self.update_banner.grid_forget()
+
+    def check_updates_background(self):
+        """Silently check for updates in a background thread without blocking startup."""
+        def _worker():
+            try:
+                has_update, info, msg = updater.check_for_updates()
+                if has_update:
+                    self.events.put(("update_available", info, msg))
+            except Exception:
+                pass
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def manual_check_update(self):
+        """Trigger manual update check from Preferences."""
+        if self.update_in_progress:
+            return
+        self.update_in_progress = True
+        self.update_status_var.set("Checking for updates…")
+        self.check_update_btn.configure(state="disabled")
+
+        def _worker():
+            try:
+                has_update, info, msg = updater.check_for_updates()
+                self.events.put(("manual_update_result", has_update, info, msg))
+            except Exception as e:
+                self.events.put(("manual_update_result", False, None, f"Error: {e}"))
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def install_update_async(self, info):
+        """Download and install update in background thread."""
+        if self.update_in_progress:
+            return
+        self.update_in_progress = True
+        self.update_status_var.set("Downloading update…")
+
+        def _worker():
+            try:
+                success, msg = updater.apply_update(info)
+                self.events.put(("update_applied", success, msg))
+            except Exception as e:
+                self.events.put(("update_applied", False, str(e)))
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def restart_app(self):
+        """Cleanly restart Rorishper."""
+        updater.restart_application(on_before_quit=self.quit_app)
 
     def quit_app(self):
         self._stop_requested = True

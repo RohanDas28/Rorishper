@@ -8,5 +8,6 @@
   "idle_unload": true,
   "show_overlay": true,
   "animation_style": "Fluid Ribbon (Neon Wave)",
-  "language": "auto"
+  "language": "auto",
+  "auto_update": true
 }

@@ -1,6 +1,16 @@
 @echo off
 cd /d "%~dp0"
 
+REM Check for updates from GitHub if running in a Git clone
+where git >nul 2>nul
+if %errorlevel% equ 0 (
+    if exist ".git" (
+        echo [Rorishper] Checking for updates from GitHub...
+        git fetch --quiet origin main >nul 2>nul
+        git pull --quiet --ff-only origin main >nul 2>nul
+    )
+)
+
 if not exist ".venv\Scripts\python.exe" (
     py -3 -m venv .venv
     if errorlevel 1 (
