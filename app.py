@@ -174,6 +174,13 @@ VK_MAP = {
 for i in range(1, 25):
     VK_MAP[f"f{i}"] = [0x6F + i]
 
+if os.name == "nt":
+    try:
+        ctypes.windll.user32.GetAsyncKeyState.restype = ctypes.c_short
+        ctypes.windll.user32.GetAsyncKeyState.argtypes = [ctypes.c_int]
+    except Exception:
+        pass
+
 
 def is_key_down(token: str) -> bool:
     """Check whether a key is physically held down using Windows GetAsyncKeyState."""
@@ -614,6 +621,7 @@ class RorishperFlow:
         self.capturing = False
         self.recording = False
         self.sleeping = False
+        self.was_sleeping = False
         self.suppress_shortcut = False
         self._stop_requested = False
         self.audio_parts = []
@@ -664,15 +672,18 @@ class RorishperFlow:
         """Dedicated background poller using Windows GetAsyncKeyState.
         Ensures global hotkey detection works 100% reliably even after hours of background sleep."""
         while not self._stop_requested:
-            time.sleep(0.02)
-            if self.capturing or self.suppress_shortcut or not self.hotkey:
-                continue
-            all_down = all(is_key_down(k) for k in self.hotkey)
+            try:
+                time.sleep(0.02)
+                if self.capturing or self.suppress_shortcut or not self.hotkey:
+                    continue
+                all_down = all(is_key_down(k) for k in self.hotkey)
 
-            if all_down and not self.recording:
-                self.start_recording()
-            elif not all_down and self.recording:
-                self.stop_recording()
+                if all_down and not self.recording:
+                    self.start_recording()
+                elif not all_down and self.recording:
+                    self.stop_recording()
+            except Exception:
+                time.sleep(0.05)
 
     def _init_overlay(self):
         """Initialize high-end translucent glass pill overlay."""
@@ -1385,6 +1396,7 @@ class RorishperFlow:
             self.model = None
             self.device_used = None
             self.sleeping = True
+            self.was_sleeping = False
             gc.collect()
             self.set_status("Sleeping · GPU memory released", COLOR_TEXT_MUTED)
             self.set_runtime_state("sleeping")
@@ -1457,7 +1469,8 @@ class RorishperFlow:
             return
         self.recording = True
         self.last_activity = time.monotonic()
-        is_waking = (self.model is None or self.sleeping)
+        is_waking = (self.model is None or self.sleeping or self.model_loading)
+        self.was_sleeping = is_waking
         self.sleeping = False
         self.audio_parts = []
         self.events.put(("recording", is_waking))
@@ -1485,23 +1498,32 @@ class RorishperFlow:
             pass
 
         audio = np.concatenate(self.audio_parts).reshape(-1) if self.audio_parts else np.array([], dtype=np.float32)
+        was_waking = getattr(self, "was_sleeping", False) or (self.model is None) or self.model_loading
+
         if len(audio) < SAMPLE_RATE // 4:
-            self.events.put(("status", "That was too short — hold and speak", "#F59E0B"))
-            self.events.put(("hide_overlay", None))
+            if was_waking:
+                # User pressed shortcut while sleeping/unloaded to wake up and load the model
+                self.events.put(("status", "Waking GPU model…", COLOR_WAVE_ACCENT))
+                self.events.put(("overlay_status", ("Waking GPU model…", "waking")))
+                self.events.put(("state", "loading"))
+                self.request_model_load()
+            else:
+                self.events.put(("status", "That was too short — hold and speak", "#F59E0B"))
+                self.events.put(("hide_overlay", None))
         else:
-            if self.model is None or self.transcribing:
+            if self.model is None or self.transcribing or self.model_loading:
                 self.pending_audios.append(audio)
-                if self.model is None:
+                if self.model is None or self.model_loading:
                     self.events.put(("status", "Waking GPU · will transcribe immediately on ready…", COLOR_WAVE_ACCENT))
-                    self.events.put(("overlay_status", ("Generating — release to finish", "transcribing")))
+                    self.events.put(("overlay_status", ("Waking GPU — transcribing on ready…", "transcribing")))
                     self.events.put(("state", "transcribing"))
                     self.request_model_load()
                 else:
                     self.events.put(("status", "Recording queued; finishing current phrase…", COLOR_WAVE_ACCENT))
-                    self.events.put(("overlay_status", ("Generating — release to finish", "transcribing")))
+                    self.events.put(("overlay_status", ("Transcribing…", "transcribing")))
                     self.events.put(("state", "transcribing"))
             else:
-                self.events.put(("overlay_status", ("Generating — release to finish", "transcribing")))
+                self.events.put(("overlay_status", ("Transcribing…", "transcribing")))
                 self.start_transcription(audio)
 
     def audio_callback(self, indata, frames, timing, status):
@@ -1523,7 +1545,10 @@ class RorishperFlow:
     def load_model(self, model_name):
         try:
             if model_name not in self.model_paths:
-                self.model_paths[model_name] = download_model(model_name)
+                try:
+                    self.model_paths[model_name] = download_model(model_name, local_files_only=True)
+                except Exception:
+                    self.model_paths[model_name] = download_model(model_name)
             local_path = self.model_paths[model_name]
 
             model = WhisperModel(local_path, device="cuda", compute_type="float16", local_files_only=True)
@@ -1536,10 +1561,14 @@ class RorishperFlow:
 
             self.model = model
             self.sleeping = False
+            self.was_sleeping = False
             self.events.put(("model", (model, "cuda")))
         except Exception as gpu_error:
             self.model = None
             self.events.put(("status", f"GPU unavailable: {gpu_error}", "#ED8B83"))
+        finally:
+            with self.model_lock:
+                self.model_loading = False
 
     def reload_model(self, _value=None):
         if self.transcribing:
@@ -1555,7 +1584,7 @@ class RorishperFlow:
         self.transcribing = True
         self.last_activity = time.monotonic()
         self.events.put(("status", "Transcribing on NVIDIA GPU…", COLOR_WAVE_ACCENT))
-        self.events.put(("overlay_status", ("Generating — release to finish", "transcribing")))
+        self.events.put(("overlay_status", ("Transcribing…", "transcribing")))
         self.events.put(("state", "transcribing"))
         threading.Thread(target=self.transcribe, args=(audio, self.model), daemon=True).start()
 
@@ -1599,6 +1628,8 @@ class RorishperFlow:
         except Exception as exc:
             self.suppress_shortcut = False
             self.set_status(f"Copied, but paste failed: {exc}", "#ED8B83")
+        finally:
+            self.suppress_shortcut = False
 
     def save_settings(self, _value=None):
         self.settings.update(
@@ -1635,7 +1666,11 @@ class RorishperFlow:
                     self.set_runtime_state("error")
                     self.reload_button.configure(state="normal")
                     self._hide_overlay()
-                elif "too short" in payload.lower() or "microphone unavailable" in payload.lower():
+                elif "too short" in payload.lower():
+                    if self.model is not None:
+                        self.set_runtime_state("ready")
+                    self._hide_overlay()
+                elif "microphone unavailable" in payload.lower():
                     if self.model is not None:
                         self.set_runtime_state("ready")
                     else:
@@ -1655,6 +1690,8 @@ class RorishperFlow:
             elif kind == "model":
                 self.model, self.device_used = payload
                 self.model_loading = False
+                self.sleeping = False
+                self.was_sleeping = False
                 self.last_activity = time.monotonic()
                 if self.recording:
                     self.set_runtime_state("listening")
@@ -1665,6 +1702,9 @@ class RorishperFlow:
                 else:
                     self.set_runtime_state("ready")
                     self.set_status("Ready · NVIDIA GPU active", "#10B981")
+                    if hasattr(self, "floating_overlay") and self.floating_overlay.is_visible():
+                        self._show_overlay("Ready · GPU active", mode="done")
+                        self.root.after(1400, self._hide_overlay)
                 self.reload_button.configure(state="normal")
             elif kind == "overlay_status":
                 text, mode = payload
